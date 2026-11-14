@@ -20,7 +20,7 @@ export default function handler(req, res) {
     headline: todo(persona.headline) ? '' : persona.headline,
     photo: persona.photo || '',
     greeting: persona.greeting || '',
-    badges: (persona.badges || []).slice(0, 8),
+    facts: (persona.facts || []).filter((f) => Array.isArray(f) && f.length === 2).slice(0, 8),
     thinkingLines: persona.thinkingLines || [],
     footer: persona.footer || '',
     voiceTest: persona.voiceTest || '',

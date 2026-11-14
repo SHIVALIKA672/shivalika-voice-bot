@@ -18,7 +18,7 @@ export default {
   photo: '',
 
   // The first message on screen (not spoken automatically).
-  greeting: "Hi, I'm Shivalika! Tap the mic and ask me anything: my story, my superpower, how I work, or where I want to grow.",
+  greeting: "Hi, I'm Shivalika! Tap the orb and ask me anything: my story, my superpower, how I work, or where I want to grow. You can also pick a question or type one.",
 
   // Default voice: a female US-English voice (the visitor can still change it).
   // "prefer" = words to look for in the browser's voice names, best first.
@@ -49,14 +49,19 @@ export default {
   // A sentence with all the tricky words, for "Test voice" in Voice settings.
   voiceTest: "Hi, I'm Shivalika Pillai, a Gen AI engineer at Jio, from Navi Mumbai. I built Nudge and Shekl with RAG, LLMs and PostgreSQL. I'm an empath, and an anime fan.",
 
-  // Little facts shown under your name.
-  badges: ['🤖 Gen AI Engineer @ Jio', '🛍️ Built Nudge', '📒 Built Shekl', '📄 Springer author', '🎌 Anime fan', '🎸 Learning guitar'],
+  // Spec-sheet facts shown beside the voice console: [label, value].
+  facts: [
+    ['Base', 'Mumbai, India'],
+    ['Built', 'Nudge · Shekl'],
+    ['Published', 'Springer, Annals of Data Science · 2026'],
+    ['Off duty', 'Anime · guitar · swimming · acting'],
+  ],
 
   // Rotating status lines while the bot is thinking.
   thinkingLines: ['Thinking…', 'Asking my inner Jarvis…', 'Choosing my words…', 'Connecting the dots…'],
 
-  // Small credit line at the bottom of the page.
-  footer: 'Built by Shivalika · Groq Whisper + gpt-oss · 100% free stack',
+  // Small credit line on the page.
+  footer: 'Built by Shivalika · Whisper + gpt-oss on Groq · Gemini voice · Vercel · $0/month',
 
   // Clickable example questions for people who'd rather not use the mic.
   suggestedQuestions: [

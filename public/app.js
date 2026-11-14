@@ -2,15 +2,16 @@
 // Listen:  server Whisper (MediaRecorder → /api/transcribe), or the browser's
 //          own speech recognition when the server has no speech-to-text key.
 // Think:   /api/chat answers in the owner's voice.
-// Speak:   natural AI voice (/api/speak, Groq Orpheus) when available,
-//          otherwise the browser's built-in voices. Sentence by sentence,
-//          with the sentence being spoken highlighted on screen.
+// Speak:   natural AI voice (/api/speak: Groq Orpheus, then Gemini) when
+//          available, otherwise the browser's built-in voices. Sentence by
+//          sentence, with the sentence being spoken highlighted on screen.
+// Show:    a canvas "orb" that reacts to your voice and to the bot's voice.
 
 const $ = (id) => document.getElementById(id);
 const els = {
   log: $('log'), mic: $('mic'), status: $('status'), form: $('form'), input: $('input'), chips: $('chips'),
-  name: $('name'), headline: $('headline'), avatar: $('avatar'), banner: $('banner'), badges: $('badges'),
-  credit: $('credit'), handsFree: $('handsFree'),
+  name: $('name'), headline: $('headline'), banner: $('banner'), facts: $('facts'), viz: $('viz'),
+  credit: $('credit'), handsFree: $('handsFree'), handsFreeState: $('handsFreeState'),
   settings: $('settings'), settingsBtn: $('settingsBtn'), voiceSelect: $('voiceSelect'), voiceNote: $('voiceNote'),
   rate: $('rate'), rateOut: $('rateOut'), mute: $('mute'), testVoice: $('testVoice'),
 };
@@ -105,11 +106,11 @@ const audio = { ctx: null, analyser: null, stop: null, abort: null, disabled: fa
 
 // ── UI state ────────────────────────────────────────────────────────────────
 const STATUS = {
-  idle: 'Tap the mic and ask a question',
-  listening: "Listening… tap again when you're done",
-  transcribing: 'Got it, one sec…',
-  thinking: 'Thinking…',
-  speaking: 'Speaking… tap the button to interrupt',
+  idle: 'Tap the orb and ask me anything',
+  listening: "Listening · tap again when you're done",
+  transcribing: 'Got it, one sec',
+  thinking: 'Thinking',
+  speaking: 'Speaking · tap the orb to interrupt',
 };
 const MIC_LABEL = {
   idle: 'Start talking', listening: 'Stop and send', transcribing: 'Working', thinking: 'Working',
@@ -123,9 +124,7 @@ function setPhase(phase, message, isError = false) {
   els.status.textContent = message || STATUS[phase];
   els.status.classList.toggle('error', !!isError);
   els.mic.setAttribute('aria-label', MIC_LABEL[phase]);
-  if (phase !== 'listening' && phase !== 'speaking') els.mic.style.setProperty('--level', 0);
   if (phase !== 'thinking') clearInterval(state.thinkingTimer);
-  if (phase !== 'speaking') document.body.classList.remove('breathe');
 }
 
 function startThinkingLines() {
@@ -215,35 +214,45 @@ function chunksFor(text, max = CHUNK) {
   return out.length ? out : [String(text)];
 }
 
-// ── Messages ────────────────────────────────────────────────────────────────
+// ── Transcript ──────────────────────────────────────────────────────────────
+const clock = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+function entryShell(who) {
+  const wrap = document.createElement('article');
+  wrap.className = `entry ${who}`;
+  const tag = document.createElement('div');
+  tag.className = 'tag';
+  const name = document.createElement('span');
+  name.className = 'who';
+  name.textContent = who === 'bot' ? state.config.name.split(' ')[0] : 'You';
+  const time = document.createElement('time');
+  time.textContent = clock();
+  tag.append(name, time);
+  const p = document.createElement('p');
+  p.className = 'text';
+  wrap.append(tag, p);
+  return { wrap, p };
+}
+
 function addMessage(who, text) {
-  const wrap = document.createElement('div');
-  wrap.className = `msg ${who}`;
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble';
+  const { wrap, p } = entryShell(who);
   if (who === 'bot') {
     wrap.segs = chunksFor(text).map((chunk) => {
       const span = document.createElement('span');
       span.className = 'seg';
       span.textContent = chunk;
-      bubble.append(span);
+      p.append(span);
       return span;
     });
-  } else {
-    bubble.textContent = text;
-  }
-  wrap.append(bubble);
-  if (who === 'bot') {
-    const meta = document.createElement('div');
-    meta.className = 'meta';
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'replay';
-    btn.innerHTML = `${SPEAKER}<span>Play</span>`;
-    btn.setAttribute('aria-label', 'Play this answer');
+    btn.textContent = '▶ Replay';
+    btn.setAttribute('aria-label', 'Replay this answer');
     btn.addEventListener('click', () => { unlockAudio(); replay(text, wrap); });
-    meta.append(btn);
-    wrap.append(meta);
+    wrap.append(btn);
+  } else {
+    p.textContent = text;
   }
   els.log.append(wrap);
   scrollDown();
@@ -251,9 +260,8 @@ function addMessage(who, text) {
 }
 
 function addTyping() {
-  const wrap = document.createElement('div');
-  wrap.className = 'msg bot typing';
-  wrap.innerHTML = '<div class="bubble" aria-label="Thinking"><span></span><span></span><span></span></div>';
+  const { wrap, p } = entryShell('bot');
+  p.innerHTML = '<span class="thinking-dots" aria-label="Thinking"><i></i><i></i><i></i></span>';
   els.log.append(wrap);
   scrollDown();
   return wrap;
@@ -265,7 +273,7 @@ function setInterim(text) {
     state.interimEl = addMessage('you', text);
     state.interimEl.classList.add('interim');
   } else {
-    state.interimEl.querySelector('.bubble').textContent = text;
+    state.interimEl.querySelector('.text').textContent = text;
   }
   scrollDown();
 }
@@ -420,7 +428,6 @@ async function speak(text, wrap) {
     if (my !== state.speakToken) return;
   }
   if (from < chunks.length && HAS_TTS) {
-    document.body.classList.add('breathe');
     await speakBrowser(chunks.slice(from), my, (i) => onSeg(i + from));
   }
   if (my === state.speakToken) clearHighlight();
@@ -518,27 +525,142 @@ function playBuffer(buf) {
     src.onended = finish;
     audio.stop = () => { try { src.stop(); } catch { /* already stopped */ } finish(); };
     src.start();
-    meter();
   });
 }
 
-// Drive the glow around the button from the actual voice level.
-function meter() {
-  if (audio.metering || !audio.analyser) return;
-  audio.metering = true;
-  const data = new Uint8Array(audio.analyser.fftSize);
-  const loop = () => {
-    if (state.phase !== 'speaking' || !audio.stop) {
-      audio.metering = false;
-      return;
-    }
-    audio.analyser.getByteTimeDomainData(data);
-    let sum = 0;
-    for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sum += v * v; }
-    els.mic.style.setProperty('--level', Math.min(1, Math.sqrt(sum / data.length) * 5).toFixed(3));
-    requestAnimationFrame(loop);
-  };
-  requestAnimationFrame(loop);
+// ── Orb visualizer ──────────────────────────────────────────────────────────
+// Radial bars driven by real audio: your mic while listening, the bot's voice
+// while it speaks. Tick ring rotates while idle, amber sweep while thinking.
+const viz = {
+  ctx: els.viz.getContext('2d'),
+  micAnalyser: null,
+  bins: null,
+  bars: new Float32Array(72),
+  w: 0,
+  h: 0,
+  dpr: 1,
+  running: false,
+  still: matchMedia('(prefers-reduced-motion: reduce)').matches,
+};
+const COLORS = { idle: [94, 240, 255], speaking: [94, 240, 255], listening: [255, 77, 94], thinking: [255, 181, 71], transcribing: [255, 181, 71] };
+
+function sizeViz() {
+  const r = els.viz.getBoundingClientRect();
+  viz.dpr = Math.min(2, window.devicePixelRatio || 1);
+  viz.w = els.viz.width = Math.max(1, Math.round(r.width * viz.dpr));
+  viz.h = els.viz.height = Math.max(1, Math.round(r.height * viz.dpr));
+}
+
+function drawViz(t) {
+  const { ctx, w, h, bars } = viz;
+  const phase = state.phase;
+  const [r, g, b] = COLORS[phase] || COLORS.idle;
+  const rgba = (a) => `rgba(${r},${g},${b},${a})`;
+  const cx = w / 2;
+  const cy = h / 2;
+  const R = Math.min(w, h) / 2;
+  ctx.clearRect(0, 0, w, h);
+
+  // What drives the bars right now?
+  let src = null;
+  if (phase === 'listening') src = viz.micAnalyser;
+  else if (phase === 'speaking' && audio.stop) src = audio.analyser;
+  let data = null;
+  if (src) {
+    if (!viz.bins || viz.bins.length !== src.frequencyBinCount) viz.bins = new Uint8Array(src.frequencyBinCount);
+    src.getByteFrequencyData(viz.bins);
+    data = viz.bins;
+  }
+  const N = bars.length;
+  for (let i = 0; i < N; i++) {
+    const m = i < N / 2 ? i : N - 1 - i; // mirror so the shape is symmetric
+    let target;
+    if (data) target = data[Math.floor((m / (N / 2)) * data.length * 0.32)] / 255;
+    else if (phase === 'speaking') target = 0.18 + 0.32 * Math.abs(Math.sin(t * 0.006 + m * 0.55) * Math.sin(t * 0.0021 + m)); // browser voice: no audio data
+    else if (phase === 'idle') target = 0.05 + 0.035 * (1 + Math.sin(t * 0.0018 + m * 0.42));
+    else target = 0.04;
+    bars[i] += (target - bars[i]) * (target > bars[i] ? 0.45 : 0.12);
+  }
+
+  // Outer tick ring
+  const spin = viz.still ? 0 : t * (phase === 'thinking' || phase === 'transcribing' ? 0.0009 : 0.00012);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(spin);
+  for (let i = 0; i < 90; i++) {
+    const a = (i / 90) * Math.PI * 2;
+    const long = i % 15 === 0;
+    const r1 = R * 0.95;
+    const r2 = R * (long ? 0.86 : 0.91);
+    ctx.strokeStyle = rgba(long ? 0.65 : 0.22);
+    ctx.lineWidth = (long ? 2 : 1) * viz.dpr;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1);
+    ctx.lineTo(Math.cos(a) * r2, Math.sin(a) * r2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Thinking sweep
+  if (phase === 'thinking' || phase === 'transcribing') {
+    const a0 = viz.still ? 0 : t * 0.004;
+    ctx.strokeStyle = rgba(0.9);
+    ctx.lineWidth = 2.5 * viz.dpr;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(cx, cy, R * 0.8, a0, a0 + Math.PI * 0.45);
+    ctx.stroke();
+  }
+
+  // Radial bars
+  const r0 = R * 0.5;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(1.5, R * 0.022);
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2 - Math.PI / 2;
+    const len = R * 0.04 + bars[i] * R * 0.3;
+    ctx.strokeStyle = rgba(0.35 + bars[i] * 0.65);
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+    ctx.lineTo(cx + Math.cos(a) * (r0 + len), cy + Math.sin(a) * (r0 + len));
+    ctx.stroke();
+  }
+
+  // Core
+  let energy = 0;
+  for (let i = 0; i < N; i++) energy += bars[i];
+  energy /= N;
+  const core = R * (0.4 + energy * 0.06);
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, core);
+  grad.addColorStop(0, rgba(0.28 + energy * 0.4));
+  grad.addColorStop(0.7, rgba(0.08));
+  grad.addColorStop(1, rgba(0.02));
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, core, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = rgba(0.75);
+  ctx.lineWidth = 1.5 * viz.dpr;
+  ctx.beginPath();
+  ctx.arc(cx, cy, core, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([2 * viz.dpr, 5 * viz.dpr]);
+  ctx.strokeStyle = rgba(0.35);
+  ctx.beginPath();
+  ctx.arc(cx, cy, core * 0.78, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function vizLoop(t) {
+  if (document.hidden) { viz.running = false; return; }
+  drawViz(t);
+  requestAnimationFrame(vizLoop);
+}
+function startViz() {
+  if (viz.running) return;
+  viz.running = true;
+  requestAnimationFrame(vizLoop);
 }
 
 function speakBrowser(chunks, my, onSeg) {
@@ -606,7 +728,7 @@ function micFailed(err) {
   const n = err?.name || '';
   let msg = "I couldn't use your microphone. You can type your question below.";
   if (n === 'NotAllowedError' || n === 'SecurityError') {
-    msg = 'Microphone access is blocked. Allow it from the icon in the address bar and tap the mic again, or type below.';
+    msg = 'Microphone access is blocked. Allow it from the icon in the address bar and tap the orb again, or type below.';
   } else if (n === 'NotFoundError' || n === 'OverconstrainedError') {
     msg = 'No microphone found. You can type your question below.';
   }
@@ -663,6 +785,7 @@ async function startRecorder(turn) {
       analyser.fftSize = 1024;
       src.connect(analyser);
       buf = new Uint8Array(analyser.fftSize);
+      viz.micAnalyser = analyser;
     } catch { analyser = null; }
   }
   const vad = !!analyser && ctx.state === 'running';
@@ -706,7 +829,6 @@ async function startRecorder(turn) {
       floor = level < floor ? level : floor + (level - floor) * 0.002;
       const threshold = Math.min(0.08, Math.max(0.018, floor * 3));
       if (level > threshold) { speechMs += dt; quietMs = 0; if (speechMs > 220) heard = true; } else quietMs += dt;
-      els.mic.style.setProperty('--level', Math.min(1, level * 9).toFixed(3));
       if (heard && quietMs > 1500) return session.stop('auto');
       if (!heard && elapsed > 9000) return session.stop('silence');
     }
@@ -717,14 +839,15 @@ async function startRecorder(turn) {
   function finish() {
     if (finished) return;
     finished = true;
+    if (viz.micAnalyser === analyser) viz.micAnalyser = null;
     stream.getTracks().forEach((t) => t.stop());
     try { ctx?.close(); } catch { /* ignore */ }
     if (state.recorder === session) state.recorder = null;
     if (turn !== state.turn || reason === 'cancel') return;
     if (vad && !heard && reason !== 'user') {
       setPhase('idle', state.handsFree
-        ? "Hands-free is on, but I didn't hear anything. Tap the mic when you're ready."
-        : "I didn't hear anything. Tap the mic and try again, or type below.");
+        ? "Hands-free is on, but I didn't hear anything. Tap the orb when you're ready."
+        : "I didn't hear anything. Tap the orb and try again, or type below.");
       return;
     }
     const blob = new Blob(chunks, { type: rec.mimeType || mimeType || 'audio/webm' });
@@ -737,7 +860,7 @@ async function startRecorder(turn) {
 
 async function sendAudio(blob, turn) {
   if (blob.size < 1200) {
-    setPhase('idle', 'That was a bit short. Tap the mic and ask your question.');
+    setPhase('idle', 'That was a bit short. Tap the orb and ask your question.');
     return;
   }
   setPhase('transcribing');
@@ -753,7 +876,7 @@ async function sendAudio(blob, turn) {
     if (!r.ok) throw new Error(data.error || 'Transcription failed');
     const text = String(data.text || '').trim();
     if (!text) {
-      setPhase('idle', "Sorry, I didn't catch that. Tap the mic and try again.");
+      setPhase('idle', "Sorry, I didn't catch that. Tap the orb and try again.");
       return;
     }
     ask(text, turn);
@@ -805,7 +928,7 @@ function startRecognition(turn) {
       setPhase('idle', "Voice input isn't working in this browser right now. Please type your question below.", true);
       return;
     }
-    setPhase('idle', "I didn't hear anything. Tap the mic and try again, or type below.");
+    setPhase('idle', "I didn't hear anything. Tap the orb and try again, or type below.");
   };
 
   try {
@@ -882,6 +1005,7 @@ document.addEventListener('keydown', (e) => {
 els.handsFree.addEventListener('change', () => {
   state.handsFree = els.handsFree.checked;
   store.set('handsFree', state.handsFree);
+  els.handsFreeState.textContent = state.handsFree ? 'on' : 'off';
   unlockAudio();
   if (state.handsFree && state.phase === 'idle') startListening();
 });
@@ -930,20 +1054,27 @@ async function boot() {
   const c = state.config;
   buildSayList();
 
-  els.name.textContent = c.name;
-  document.title = `Talk to ${c.name}`;
-  els.headline.textContent = c.headline || 'Ask me anything, out loud';
-  if (c.photo) {
-    els.avatar.style.backgroundImage = `url(${JSON.stringify(c.photo)})`;
-    els.avatar.textContent = '';
-  } else {
-    els.avatar.textContent = initials(c.name);
+  // Name: first word solid, the rest outlined, on two lines (one line on phones).
+  const [first, ...rest] = c.name.split(/\s+/);
+  els.name.textContent = '';
+  const f = document.createElement('span');
+  f.className = 'first';
+  f.textContent = first;
+  els.name.append(f);
+  if (rest.length) {
+    const l = document.createElement('span');
+    l.className = 'last';
+    l.textContent = rest.join(' ');
+    els.name.append(document.createElement('br'), l);
   }
-  for (const b of c.badges || []) {
-    const span = document.createElement('span');
-    span.className = 'badge';
-    span.textContent = b;
-    els.badges.append(span);
+  document.title = `${c.name} · Voice Interview`;
+  els.headline.textContent = c.headline || 'Ask me anything, out loud';
+  for (const [label, value] of c.facts || []) {
+    const dt = document.createElement('dt');
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    els.facts.append(dt, dd);
   }
   els.credit.textContent = c.footer || '';
 
@@ -955,15 +1086,19 @@ async function boot() {
     els.banner.hidden = false;
   }
 
-  for (const q of c.suggestedQuestions || []) {
+  (c.suggestedQuestions || []).forEach((q, i) => {
+    const li = document.createElement('li');
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'chip';
-    b.textContent = q;
+    b.className = 'prompt';
     b.title = q;
+    b.innerHTML = '<span class="n"></span><span class="q"></span><span class="go">→</span>';
+    b.querySelector('.n').textContent = String(i + 1).padStart(2, '0');
+    b.querySelector('.q').textContent = q;
     b.addEventListener('click', () => askFromUI(q));
-    els.chips.append(b);
-  }
+    li.append(b);
+    els.chips.append(li);
+  });
   if (!(c.suggestedQuestions || []).length) els.chips.parentElement.hidden = true;
 
   if (c.greeting) addMessage('bot', c.greeting);
@@ -974,13 +1109,20 @@ async function boot() {
   else state.sttMode = 'none';
 
   els.handsFree.checked = !!state.handsFree && state.sttMode !== 'none';
+  els.handsFreeState.textContent = els.handsFree.checked ? 'on' : 'off';
   if (state.sttMode === 'none') {
     document.body.classList.add('no-mic');
-    setPhase('idle', "Voice input isn't supported in this browser. Type a question below and I'll answer out loud.");
+    els.handsFree.closest('.toggle').hidden = true;
+    setPhase('idle', "Voice input isn't supported in this browser. Type a question and I'll answer out loud");
   } else {
     setPhase('idle');
   }
-  if (matchMedia('(pointer: coarse)').matches) document.querySelector('.kbd-hint').style.visibility = 'hidden';
+  if (matchMedia('(pointer: coarse)').matches) document.querySelector('.hint').hidden = true;
+
+  sizeViz();
+  if (typeof ResizeObserver === 'function') new ResizeObserver(sizeViz).observe(els.viz);
+  startViz();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) startViz(); });
 
   const rate = state.rate ?? c.voice?.rate ?? 1;
   els.rate.value = rate;
