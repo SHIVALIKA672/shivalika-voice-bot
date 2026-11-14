@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Voice Interview Bot</title>
+  <meta name="description" content="Ask me interview questions out loud and hear how I'd answer.">
+  <meta name="theme-color" content="#f3f5fb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b1020" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='11' fill='%231d4ed8'/%3E%3Ccircle cx='12' cy='12' r='7' fill='none' stroke='%2367e8f9' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='3' fill='%23e0f7ff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body data-phase="idle">
+  <div class="app">
+    <header class="top">
+      <div class="avatar-wrap">
+        <div class="avatar" id="avatar" aria-hidden="true"></div>
+        <span class="online" title="Online and ready to chat"></span>
+      </div>
+      <div class="who">
+        <h1 id="name">Loading…</h1>
+        <p id="headline"></p>
+      </div>
+      <button class="icon-btn" id="settingsBtn" type="button" aria-label="Voice settings" title="Voice settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4h4l5 4V6L7 10H3Zm13.5 2a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4ZM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6Z"/></svg>
+      </button>
+    </header>
+
+    <div class="badges" id="badges" aria-label="Quick facts"></div>
+
+    <div class="banner" id="banner" role="note" hidden></div>
+
+    <main class="log" id="log" aria-live="polite" aria-label="Conversation"></main>
+
+    <footer class="dock">
+      <div class="chips-wrap">
+        <span class="chips-label">Try asking</span>
+        <div class="chips" id="chips"></div>
+      </div>
+
+      <div class="mic-row">
+        <label class="toggle" title="After each answer, the mic opens again automatically">
+          <input type="checkbox" id="handsFree">
+          <span class="track" aria-hidden="true"></span>
+          <span>Hands-free</span>
+        </label>
+        <button class="mic" id="mic" type="button" aria-label="Start talking">
+          <span class="core" aria-hidden="true"></span>
+          <svg class="i-mic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11h-2Z"/></svg>
+          <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/></svg>
+          <svg class="i-wait" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+          <svg class="i-speak" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="9" width="2.6" height="6" rx="1.3"/><rect x="7.4" y="6" width="2.6" height="12" rx="1.3"/><rect x="11.8" y="3.5" width="2.6" height="17" rx="1.3"/><rect x="16.2" y="7" width="2.6" height="10" rx="1.3"/><rect x="20.4" y="10" width="2.2" height="4" rx="1.1"/></svg>
+        </button>
+        <span class="kbd-hint" aria-hidden="true">or press <kbd>Space</kbd></span>
+      </div>
+      <p class="status" id="status" role="status">Tap the mic and ask a question</p>
+
+      <form class="ask" id="form" autocomplete="off">
+        <label class="sr-only" for="input">Type a question</label>
+        <input id="input" type="text" maxlength="600" placeholder="…or type a question" enterkeyhint="send">
+        <button type="submit" aria-label="Send question">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.4 20.4 21 12 3.4 3.6 3.4 10l12 2-12 2z"/></svg>
+        </button>
+      </form>
+      <p class="credit" id="credit"></p>
+    </footer>
+  </div>
+
+  <dialog id="settings" aria-labelledby="settingsTitle">
+    <form method="dialog" class="sheet">
+      <h2 id="settingsTitle">Voice settings</h2>
+      <label for="voiceSelect">Voice</label>
+      <select id="voiceSelect"></select>
+      <p class="fine" id="voiceNote"></p>
+      <label for="rate">Speed <output id="rateOut">1.0×</output></label>
+      <input id="rate" type="range" min="0.7" max="1.4" step="0.05" value="1">
+      <label class="check"><input id="mute" type="checkbox"> Show answers as text only (no sound)</label>
+      <div class="sheet-actions">
+        <button type="button" id="testVoice" class="ghost">Test voice</button>
+        <button value="close" class="primary">Done</button>
+      </div>
+      <p class="fine">Hearing the bot works in any modern browser. To talk to it, use Chrome, Edge, Safari or Firefox and allow microphone access when asked.</p>
+    </form>
+  </dialog>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
