@@ -1,5 +1,7 @@
 # Voice Interview Bot
 
+**Live:** https://shivalika-voice-bot.vercel.app
+
 A voice bot that answers interview-style questions ("What's your superpower?", "How do you push your limits?") the way its owner would. Open the link, tap the mic, ask a question, and hear the answer.
 
 For people testing it, there's nothing to install and no key to enter. It works on desktop and phone. If talking isn't an option, you can tap a suggested question or type one instead.
